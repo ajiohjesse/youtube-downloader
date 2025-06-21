@@ -10,7 +10,6 @@ import {
   readCookiesFile,
   updateCookiesFile,
 } from "./server/utils";
-import { updateCookieSchema } from "./server/schemas";
 import { db } from "./server/database/setup";
 import { videoTable } from "./server/database/schema";
 import { eq } from "drizzle-orm";
@@ -37,24 +36,40 @@ const server = serve({
       },
 
       async PUT(req) {
-        const body = await req.json();
-        const parsed = updateCookieSchema.safeParse(body);
+        const form = await req.formData();
+        const cookieTxt = form.get("cookies");
 
-        if (!parsed.success) {
-          return Response.json(
-            {
-              success: false,
-              message: "Missing cookies text",
-            },
-            { status: 400 }
-          );
+        if (
+          cookieTxt &&
+          cookieTxt instanceof File &&
+          cookieTxt.type.includes("text/plain")
+        ) {
+          const cookies = await cookieTxt.text();
+          try {
+            await updateCookiesFile(cookies);
+          } catch (error) {
+            console.error("Failed to update cookies file:", error);
+            return Response.json(
+              {
+                message: "Failed to update cookies file",
+              },
+              { status: 500 }
+            );
+          }
+
+          return Response.json({
+            success: true,
+            message: "Cookies file updated successfully",
+          });
         }
 
-        await updateCookiesFile(parsed.data.cookies);
-
-        return Response.json({
-          success: true,
-        });
+        return Response.json(
+          {
+            success: false,
+            message: "Missing cookies text",
+          },
+          { status: 400 }
+        );
       },
     },
     "/api/videos": {

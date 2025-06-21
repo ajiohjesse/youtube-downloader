@@ -10,3 +10,12 @@ export const videoQueryOptions = () => {
     },
   });
 };
+
+export const cookiesQueryOptions = () => {
+  return queryOptions({
+    queryKey: ["cookies"] as const,
+    queryFn: async () => {
+      return fetcher<{ data: string }>("/api/cookies");
+    },
+  });
+};

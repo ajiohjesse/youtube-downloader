@@ -1,9 +1,5 @@
 import z from "zod/v4";
 
-export const updateCookieSchema = z.object({
-  cookies: z.string(),
-});
-
 export const videoSchema = z.object({
   id: z.number(),
   title: z.string(),

@@ -17,11 +17,12 @@ export const assetDownloadsDir = () => {
 };
 
 export const readCookiesFile = async () => {
-  const cookies = Bun.file(COOKIES_FILE_PATH);
-  if (!cookies.exists) {
-    return "No cookies found";
+  try {
+    const cookies = Bun.file(COOKIES_FILE_PATH);
+    return await cookies.text();
+  } catch {
+    return "No cookies found!";
   }
-  return cookies.text();
 };
 
 export const updateCookiesFile = async (content: string) => {
