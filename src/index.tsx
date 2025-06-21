@@ -15,8 +15,12 @@ import { videoTable } from "./server/database/schema";
 import { eq } from "drizzle-orm";
 import { deleteVideo } from "./server/handlers/delete-video";
 
+const PORT = process.env.PORT;
+if (!PORT) throw new Error("PORT is not set");
+
 const server = serve({
   idleTimeout: 255,
+  port: PORT,
   routes: {
     "/*": index,
     "/api/sse": {
