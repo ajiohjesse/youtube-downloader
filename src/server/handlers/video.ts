@@ -1,152 +1,215 @@
 import { eq } from "drizzle-orm";
 import { videoTable } from "../database/schema";
 import { db } from "../database/setup";
-import {
-  COOKIES_FILE_PATH,
-  getOutput,
-  sanitizeFilename,
-  VIDEO_STATUS,
-} from "../utils";
 import { sendProgressEvent, sendVideoEvent } from "../sse";
+import {
+	COOKIES_FILE_PATH,
+	VIDEO_STATUS,
+	getOutput,
+	sanitizeFilename,
+} from "../utils";
 
-const downloadInBackground = async (
-  videoId: number,
-  title: string,
-  url: string
-) => {
-  try {
-    const proc = Bun.spawn(
-      [
-        "yt-dlp",
-        "--progress-template",
-        "PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
-        "--cookies",
-        COOKIES_FILE_PATH,
-        "-f",
-        "best[height<=1080][ext=mp4]",
-        "--output",
-        getOutput(title),
-        "--postprocessor-args",
-        "ffmpeg:-c:a aac -b:a 128k",
-        url,
-      ],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-      }
-    );
-
-    const stderrReader = proc.stderr.getReader();
-    try {
-      while (true) {
-        const { done, value } = await stderrReader.read();
-        if (done) break;
-
-        const errorText = new TextDecoder().decode(value);
-        console.error("yt-dlp error:", errorText);
-      }
-    } catch (error) {
-      console.error("Error reading stderr:", error);
-      throw error;
-    } finally {
-      stderrReader.releaseLock();
-    }
-
-    const stdoutReader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { value, done } = await stdoutReader.read();
-        if (done) {
-          break;
-        }
-        buffer += decoder.decode(value);
-
-        console.log("progress buffer: ", buffer);
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.includes("PROGRESS")) {
-            sendProgressEvent(videoId, line);
-          }
-        }
-      }
-    } catch (error) {
-      console.log("error reading stdout");
-      throw error;
-    } finally {
-      stdoutReader.releaseLock();
-    }
-
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
-      console.log("Video download failed: Exit code", proc.exitCode);
-      throw new Error("Video download failed");
-    }
-
-    await db
-      .update(videoTable)
-      .set({ status: VIDEO_STATUS.completed })
-      .where(eq(videoTable.id, videoId));
-  } catch (error) {
-    console.log(
-      "Error downloading video: ",
-      { videoId, url, title },
-      JSON.stringify(error)
-    );
-
-    const [video] = await db
-      .update(videoTable)
-      .set({ status: VIDEO_STATUS.error })
-      .where(eq(videoTable.id, videoId))
-      .returning();
-
-    sendVideoEvent(video);
-  }
+type DownloadResult = {
+	success: boolean;
+	video?: any;
+	message?: string;
 };
 
-export const handleVideoDownload = async (url: string) => {
-  try {
-    const cookiesFile = Bun.file(COOKIES_FILE_PATH);
-    const cookiesExist = await cookiesFile.exists();
-    if (!cookiesExist) {
-      console.log("No cookies file found");
-      throw new Error("No cookies file found");
-    }
+const YT_DLP_ARGS = [
+	"--progress-template",
+	"PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
+	"--cookies",
+	COOKIES_FILE_PATH,
+	"-f",
+	"best[height<=1080][ext=mp4]",
+	"--postprocessor-args",
+	"ffmpeg:-c:a aac -b:a 128k",
+] as const;
 
-    let rawTitle: string;
+const processProgressStream = async (
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	videoId: number,
+): Promise<void> => {
+	const decoder = new TextDecoder();
+	let buffer = "";
 
-    try {
-      rawTitle =
-        await Bun.$`yt-dlp --cookies "${COOKIES_FILE_PATH}" --get-title "${url}"`.text();
-    } catch {
-      return { success: false, message: "Failed to get video details" };
-    }
+	try {
+		while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
 
-    const title = `${sanitizeFilename(rawTitle)}_${Date.now()}.mp4`;
+			buffer += decoder.decode(value, { stream: true });
 
-    const [video] = await db
-      .insert(videoTable)
-      .values({
-        title,
-        url,
-      })
-      .returning();
+			// Handle both \r (carriage return) and \n (newline)
+			// Split on \r first to catch progress overwrites, then \n for regular lines
+			const parts = buffer.split("\r");
 
-    downloadInBackground(video.id, video.title, video.url).catch();
+			// If we have carriage returns, process each part
+			if (parts.length > 1) {
+				// Process all complete parts except the last
+				for (let i = 0; i < parts.length - 1; i++) {
+					const part = parts[i].trim();
+					if (part && part.includes("PROGRESS")) {
+						console.log("Sending progress (\\r):", part);
+						sendProgressEvent(videoId, part);
+					}
+				}
+				// Keep the last part as buffer
+				buffer = parts[parts.length - 1];
+			}
 
-    return {
-      success: true,
-      video,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : JSON.stringify(error),
-    };
-  }
+			// Also handle newline-separated content
+			const lines = buffer.split("\n");
+			buffer = lines.pop() || "";
+
+			for (const line of lines) {
+				const trimmedLine = line.trim();
+				if (trimmedLine && trimmedLine.includes("PROGRESS")) {
+					console.log("Sending progress (\\n):", trimmedLine);
+					sendProgressEvent(videoId, trimmedLine);
+				}
+			}
+		}
+
+		// Process any remaining content in buffer
+		if (buffer.trim() && buffer.includes("PROGRESS")) {
+			console.log("Sending final progress:", buffer.trim());
+			sendProgressEvent(videoId, buffer.trim());
+		}
+	} finally {
+		reader.releaseLock();
+	}
+};
+
+const processErrorStream = async (
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<void> => {
+	const decoder = new TextDecoder();
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			const errorText = decoder.decode(value);
+			console.error("yt-dlp error:", errorText);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+};
+
+const downloadInBackground = async (
+	videoId: number,
+	title: string,
+	url: string,
+): Promise<void> => {
+	try {
+		const proc = Bun.spawn(
+			["yt-dlp", ...YT_DLP_ARGS, "--output", getOutput(title), url],
+			{
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
+
+		// Process streams concurrently
+		const [stdoutPromise, stderrPromise] = await Promise.allSettled([
+			processProgressStream(proc.stdout.getReader(), videoId),
+			processErrorStream(proc.stderr.getReader()),
+		]);
+
+		// Check if stream processing failed
+		if (stdoutPromise.status === "rejected") {
+			console.error("Error processing stdout:", stdoutPromise.reason);
+			throw stdoutPromise.reason;
+		}
+		if (stderrPromise.status === "rejected") {
+			console.error("Error processing stderr:", stderrPromise.reason);
+		}
+
+		await proc.exited;
+
+		if (proc.exitCode !== 0) {
+			console.error("Video download failed: Exit code", proc.exitCode);
+			throw new Error(`Video download failed with exit code: ${proc.exitCode}`);
+		}
+
+		const [completedVideo] = await db
+			.update(videoTable)
+			.set({ status: VIDEO_STATUS.completed })
+			.where(eq(videoTable.id, videoId))
+			.returning();
+
+		console.log("Video download completed successfully:", { videoId, title });
+
+		// Send video completion event
+		sendVideoEvent(completedVideo);
+	} catch (error) {
+		console.error("Error downloading video:", { videoId, url, title }, error);
+
+		const [video] = await db
+			.update(videoTable)
+			.set({ status: VIDEO_STATUS.error })
+			.where(eq(videoTable.id, videoId))
+			.returning();
+
+		sendVideoEvent(video);
+		throw error; // Re-throw to ensure proper error handling
+	}
+};
+
+const getVideoTitle = async (url: string): Promise<string> => {
+	try {
+		const rawTitle =
+			await Bun.$`yt-dlp --cookies "${COOKIES_FILE_PATH}" --get-title "${url}"`.text();
+		return `${sanitizeFilename(rawTitle.trim())}_${Date.now()}.mp4`;
+	} catch (error) {
+		console.error("Failed to get video title:", error);
+		throw new Error("Failed to get video details");
+	}
+};
+
+const validateCookiesFile = async (): Promise<void> => {
+	const cookiesFile = Bun.file(COOKIES_FILE_PATH);
+	const cookiesExist = await cookiesFile.exists();
+
+	if (!cookiesExist) {
+		console.error("No cookies file found at:", COOKIES_FILE_PATH);
+		throw new Error("No cookies file found");
+	}
+};
+
+export const handleVideoDownload = async (
+	url: string,
+): Promise<DownloadResult> => {
+	try {
+		await validateCookiesFile();
+
+		const title = await getVideoTitle(url);
+
+		const [video] = await db
+			.insert(videoTable)
+			.values({ title, url })
+			.returning();
+
+		// Start download in background without awaiting
+		downloadInBackground(video.id, video.title, video.url).catch((error) => {
+			console.error("Background download failed:", error);
+		});
+
+		return {
+			success: true,
+			video,
+		};
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Unknown error occurred";
+		console.error("handleVideoDownload failed:", message);
+
+		return {
+			success: false,
+			message,
+		};
+	}
 };
