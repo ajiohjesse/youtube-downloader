@@ -75,6 +75,7 @@ const server = serve({
         const parsed = z
           .object({
             url: z.url().startsWith("https://youtu.be"),
+            highQuality: z.boolean().optional().default(false),
           })
           .safeParse(body);
 
@@ -88,7 +89,10 @@ const server = serve({
           );
         }
 
-        const data = await handleVideoDownload(parsed.data.url);
+        const data = await handleVideoDownload(
+          parsed.data.url,
+          parsed.data.highQuality
+        );
 
         if (!data.success) {
           return Response.json(

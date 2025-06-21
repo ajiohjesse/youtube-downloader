@@ -25,7 +25,6 @@ const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
     const eventSource = new EventSource(`/api/sse`);
 
     const handleProgressEvent = ({ data }: { data: any }) => {
-      console.log({ progressEvent: data });
       try {
         const jsonData = JSON.parse(data);
         const result = progressSchema.safeParse(jsonData);

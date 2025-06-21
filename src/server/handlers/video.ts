@@ -15,16 +15,34 @@ type DownloadResult = {
   message?: string;
 };
 
-const YT_DLP_ARGS = [
+const YT_DLP_ARGS_BEST = [
   "--progress-template",
   "PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
   "--cookies",
   COOKIES_FILE_PATH,
   "-f",
-  "best[height<=1080][ext=mp4]",
+  "best[ext=mp4]/best",
+  "--recode-video",
+  "mp4",
   "--postprocessor-args",
-  "ffmpeg:-c:a aac -b:a 128k",
+  "ffmpeg:-c:v libx264 -crf 23 -c:a aac -b:a 128k",
 ] as const;
+
+const YT_DLP_ARGS_AVERAGE = [
+  "--progress-template",
+  "PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
+  "--cookies",
+  COOKIES_FILE_PATH,
+  "-f",
+  "best[height<=1080][ext=mp4]/best[height<=720][ext=mp4]/best",
+  "--recode-video",
+  "mp4",
+  "--postprocessor-args",
+  "ffmpeg:-c:v libx264 -crf 28 -preset faster -c:a aac -b:a 96k",
+] as const;
+
+const getYtDlpArgs = (useHighQuality: boolean = true) =>
+  useHighQuality ? YT_DLP_ARGS_BEST : YT_DLP_ARGS_AVERAGE;
 
 const processProgressStream = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -102,11 +120,14 @@ const processErrorStream = async (
 const downloadInBackground = async (
   videoId: number,
   title: string,
-  url: string
+  url: string,
+  useHighQuality: boolean
 ): Promise<void> => {
+  const ytDlpArgs = getYtDlpArgs(useHighQuality);
+
   try {
     const proc = Bun.spawn(
-      ["yt-dlp", ...YT_DLP_ARGS, "--output", getOutput(title), url],
+      ["yt-dlp", ...ytDlpArgs, "--output", getOutput(title), url],
       {
         stdout: "pipe",
         stderr: "pipe",
@@ -193,7 +214,8 @@ const validateCookiesFile = async (): Promise<void> => {
 };
 
 export const handleVideoDownload = async (
-  url: string
+  url: string,
+  useHighQuality: boolean
 ): Promise<DownloadResult> => {
   try {
     await validateCookiesFile();
@@ -206,7 +228,12 @@ export const handleVideoDownload = async (
       .returning();
 
     // Start download in background without awaiting
-    downloadInBackground(video.id, video.title, video.url).catch((error) => {
+    downloadInBackground(
+      video.id,
+      video.title,
+      video.url,
+      useHighQuality
+    ).catch((error) => {
       console.error("Background download failed:", error);
     });
 

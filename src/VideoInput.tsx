@@ -8,33 +8,33 @@ export default function VideoInput() {
 
   const { mutate, isPending } = useMutation({
     mutationKey: ["video-request"],
-    mutationFn: async (url: string) => {
+    mutationFn: async ({
+      url,
+      highQuality,
+    }: {
+      url: string;
+      highQuality: boolean;
+    }) => {
       const res = await fetch(`/api/video`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, highQuality }),
       });
-
       if (!res.ok) {
         const errorData = (await res.json()) as { message: string };
         throw new Error(errorData.message);
       }
       return res.json() as Promise<Omit<Video, "progress">>;
     },
-    onSuccess: (data) => {
-      // queryClient.setQueryData(videoQueryOptions().queryKey, (old) => {
-      //   if (!old) return { data: [{ ...data, progress: "" }] };
-      //   return { data: [...old.data, { ...data, progress: "" }] };
-      // });
+    onSuccess: () => {
       queryClient.invalidateQueries(videoQueryOptions());
     },
     onError: (error) => {
       alert(error.message);
     },
   });
-
   const handleVideo = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -44,13 +44,18 @@ export default function VideoInput() {
       const form = e.currentTarget;
       const formData = new FormData(form);
       const url = formData.get("url") as string;
-      mutate(url);
+      const quality = formData.get("quality") as string;
+      mutate({ url, highQuality: quality === "best" });
     } catch (error) {}
   };
 
   return (
     <div className="api-tester">
       <form onSubmit={handleVideo} className="endpoint-row">
+        <select name="quality" defaultValue="normal" className="method">
+          <option value="normal">Normal</option>
+          <option value="best">Best</option>
+        </select>
         <input
           type="text"
           name="url"
