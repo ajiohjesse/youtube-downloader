@@ -14,6 +14,7 @@ import { updateCookieSchema } from "./server/schemas";
 import { db } from "./server/database/setup";
 import { videoTable } from "./server/database/schema";
 import { eq } from "drizzle-orm";
+import { deleteVideo } from "./server/handlers/delete-video";
 
 const server = serve({
   idleTimeout: 255,
@@ -107,6 +108,39 @@ const server = serve({
         return Response.json({
           message: "Video is processing",
           data: data.video,
+        });
+      },
+    },
+    "/api/video/:videoId": {
+      async DELETE(req) {
+        const videoId = req.params.videoId;
+        const parsed = z.coerce.number().safeParse(videoId);
+
+        if (!parsed.success) {
+          return Response.json(
+            {
+              success: false,
+              message: "Provide a valid video id",
+            },
+            { status: 400 }
+          );
+        }
+
+        const result = await deleteVideo(parsed.data);
+
+        if (!result.success) {
+          return Response.json(
+            {
+              success: false,
+              message: result.message,
+            },
+            { status: 500 }
+          );
+        }
+
+        return Response.json({
+          message: "Video deleted",
+          data: result.video,
         });
       },
     },

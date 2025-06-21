@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Video } from "./types";
 import { progressSchema } from "./server/schemas";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { videoQueryOptions } from "./query-options";
 
 type VideoCardProps = {
   video: Video;
@@ -100,7 +102,7 @@ const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
             <a href={`/api/download/${video.id}`} className="btn btn-primary">
               Download
             </a>
-            <button className="btn btn-danger">Delete</button>
+            <DeleteVideo id={video.id} />
           </>
         )}
       </div>
@@ -109,3 +111,47 @@ const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
 };
 
 export default VideoCard;
+
+const DeleteVideo = ({ id }: { id: number }) => {
+  const queryClient = useQueryClient();
+
+  const { isPending, mutate } = useMutation({
+    mutationKey: ["delete-video"],
+    mutationFn: async ({ id }: { id: number }) => {
+      const res = await fetch(`/api/video/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const errorData = (await res.json()) as { message: string };
+        throw new Error(errorData.message);
+      }
+      return res.json() as Promise<{ message: string }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(videoQueryOptions());
+    },
+    onError: (error) => {
+      alert(error.message);
+    },
+  });
+
+  const handleDelete = () => {
+    if (isPending) return;
+    if (confirm("Are you sure you want to delete this video?")) {
+      mutate({ id });
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDelete}
+      disabled={isPending}
+      className="btn btn-danger"
+    >
+      {isPending ? "Deleting..." : "Delete"}
+    </button>
+  );
+};
