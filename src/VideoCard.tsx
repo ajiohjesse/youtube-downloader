@@ -1,23 +1,52 @@
+import { useEffect, useState } from "react";
 import { Video } from "./types";
+import { progressSchema } from "./server/schemas";
 
 type VideoCardProps = {
   video: Video;
 };
 
-const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
-  const onDownload = () => {};
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString("en-NG", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  });
+};
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-NG", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    });
-  };
+const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
+  const [progress, setProgress] = useState("");
+
+  useEffect(() => {
+    const eventSource = new EventSource(`/api/sse`);
+
+    const handleProgressEvent = ({ data }: { data: any }) => {
+      console.log({ progressEvent: data });
+      try {
+        const jsonData = JSON.parse(data);
+        const result = progressSchema.safeParse(jsonData);
+        if (!result.success) {
+          console.log("Invalid sse progress data: ", result.error);
+          return;
+        }
+        const { videoId, progress } = result.data;
+        if (videoId === video.id) setProgress(progress);
+      } catch (error) {
+        console.log("SSE error: ", error);
+      }
+    };
+
+    eventSource.addEventListener("progress", handleProgressEvent);
+
+    return () => {
+      eventSource.removeEventListener("progress", handleProgressEvent);
+      eventSource.close();
+    };
+  }, []);
 
   const getStatusBadge = () => {
     switch (video.status) {
@@ -54,20 +83,22 @@ const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
         <span>Updated: {formatDate(video.updatedAt)}</span>
       </div>
 
-      {video.progress !== "" && (
+      {video.size ? (
         <div className="video-meta">
-          <span>{video.progress}</span>
+          <span>SIze: {video.size}</span>
+        </div>
+      ) : null}
+
+      {progress !== "" && (
+        <div className="video-meta">
+          <span>{progress}</span>
         </div>
       )}
 
       <div className="video-actions">
         {video.status === "completed" && (
           <>
-            <a
-              href={`/api/download/${video.id}`}
-              className="btn btn-primary"
-              onClick={onDownload}
-            >
+            <a href={`/api/download/${video.id}`} className="btn btn-primary">
               Download
             </a>
             <button className="btn btn-danger">Delete</button>

@@ -5,7 +5,7 @@ export type Video = {
   title: string;
   url: string;
   status: keyof typeof VIDEO_STATUS;
+  size?: string;
   createdAt: string;
   updatedAt: string;
-  progress: string;
 };

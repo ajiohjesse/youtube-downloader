@@ -11,7 +11,8 @@
     "start": "NODE_ENV=production bun src/index.tsx",
     "format": "prettier --write .",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:drop": "drizzle-kit drop"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.80.10",

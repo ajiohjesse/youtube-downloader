@@ -5,7 +5,6 @@ import logo from "./logo.svg";
 import reactLogo from "./react.svg";
 import Videos from "./Videos";
 import VideoInput from "./VideoInput";
-import { useSSE } from "./useSSE";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,8 +21,6 @@ const queryClient = new QueryClient({
 });
 
 export function App() {
-  useSSE(queryClient);
-
   return (
     <QueryClientProvider client={queryClient}>
       <div className="app">

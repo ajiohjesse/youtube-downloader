@@ -6,6 +6,7 @@ export const videoTable = sqliteTable("videos", {
   title: text().notNull(),
   url: text().notNull(),
   status: text().notNull().default(VIDEO_STATUS.pending),
+  size: text(),
   createdAt: integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())
     .notNull(),

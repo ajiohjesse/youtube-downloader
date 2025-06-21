@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { videoQueryOptions } from "./query-options";
 import VideoCard from "./VideoCard";
+import { useSSE } from "./useSSE";
 
 const Videos = () => {
   const { data, error } = useQuery(videoQueryOptions());
+  useSSE();
 
   if (error) {
     return <div>Error: {error.message}</div>;
@@ -15,7 +17,7 @@ const Videos = () => {
         <h2>Videos</h2>
 
         <div>
-          {data
+          {data.data
             .sort(
               (a, b) =>
                 new Date(b.createdAt).getTime() -
@@ -23,7 +25,7 @@ const Videos = () => {
             )
             .map((video) => (
               <VideoCard key={video.id} video={video} />
-            ))}{" "}
+            ))}
         </div>
       </section>
     );

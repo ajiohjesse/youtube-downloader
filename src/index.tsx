@@ -74,7 +74,7 @@ const server = serve({
         const body = await req.json();
         const parsed = z
           .object({
-            url: z.string(),
+            url: z.url().startsWith("https://youtu.be"),
           })
           .safeParse(body);
 

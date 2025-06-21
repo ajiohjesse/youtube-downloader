@@ -8,6 +8,5 @@ export const videoQueryOptions = () => {
     queryFn: async () => {
       return fetcher<{ data: Array<Video> }>("/api/videos");
     },
-    select: (data) => data.data.map((video) => ({ ...video, progress: "" })),
   });
 };

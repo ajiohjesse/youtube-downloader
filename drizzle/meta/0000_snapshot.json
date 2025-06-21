@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c2c21361-44dc-4003-b986-670bbaff046e",
+  "id": "68ed4ea4-e5ec-4ead-829b-f32aec78a61e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "videos": {
@@ -28,14 +28,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "is_downloaded": {
-          "name": "is_downloaded",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -43,6 +35,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'pending'"
+        },
+        "size": {
+          "name": "size",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
