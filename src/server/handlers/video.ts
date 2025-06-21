@@ -28,21 +28,36 @@ const YT_DLP_ARGS_BEST = [
   "ffmpeg:-c:v libx264 -crf 23 -c:a aac -b:a 128k",
 ] as const;
 
-const YT_DLP_ARGS_AVERAGE = [
+const YT_DLP_ARGS_MAXIMUM = [
   "--progress-template",
   "PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
   "--cookies",
   COOKIES_FILE_PATH,
   "-f",
-  "best[height<=1080][ext=mp4]/best[height<=720][ext=mp4]/best",
-  "--recode-video",
+  "bestvideo[height<=2160]+bestaudio/best[height<=2160]", // Up to 4K
+  "--merge-output-format",
   "mp4",
   "--postprocessor-args",
-  "ffmpeg:-c:v libx264 -crf 28 -preset faster -c:a aac -b:a 96k",
+  "ffmpeg:-c:v libx264 -crf 15 -preset veryslow -c:a aac -b:a 320k",
+  "--embed-thumbnail",
+  "--embed-metadata",
 ] as const;
 
+// const YT_DLP_ARGS_AVERAGE = [
+//   "--progress-template",
+//   "PROGRESS: %(progress._percent_str)s of %(progress._total_bytes_str)s",
+//   "--cookies",
+//   COOKIES_FILE_PATH,
+//   "-f",
+//   "best[height<=1080][ext=mp4]/best[height<=720][ext=mp4]/best",
+//   "--recode-video",
+//   "mp4",
+//   "--postprocessor-args",
+//   "ffmpeg:-c:v libx264 -crf 28 -preset faster -c:a aac -b:a 96k",
+// ] as const;
+//
 const getYtDlpArgs = (useHighQuality: boolean = true) =>
-  useHighQuality ? YT_DLP_ARGS_BEST : YT_DLP_ARGS_AVERAGE;
+  useHighQuality ? YT_DLP_ARGS_MAXIMUM : YT_DLP_ARGS_BEST;
 
 const processProgressStream = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
